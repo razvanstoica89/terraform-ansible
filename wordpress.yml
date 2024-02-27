@@ -1,0 +1,117 @@
+---
+- name: Deploy WordPress with MariaDB
+  hosts: all
+  become: yes
+  vars:
+    mysql_root_password: "your_root_password"
+    wordpress_db_name: "wordpress"
+    wordpress_db_user: "wordpressuser"
+    wordpress_db_password: "your_db_password"
+
+  tasks:
+    - name: Install Apache web server
+      package:
+        name: httpd
+        state: present
+
+    - name: Install php
+      package:
+        name: php
+        state: present
+
+    - name: Install php-mysqlnd
+      package:
+        name: php-mysqlnd
+        state: present
+
+    - name: Install php-fpm
+      package:
+        name: php-fpm
+        state: present
+
+    - name: Install php-json
+      package:
+        name: php-json
+        state: present
+
+    - name: Start Apache service
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Install MariaDB server
+      package:
+        name: mariadb105-server
+        state: present
+
+    - name: Start MariaDB service
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Install MySQL Python module
+      package:
+        name: python3-pymysql
+        state: present
+
+    - name: Secure MariaDB installation
+      mysql_user:
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        user: root
+        password: "{{ mysql_root_password }}"
+        host_all: yes
+        check_implicit_admin: yes
+        state: present
+
+    - name: Create WordPress database
+      mysql_db:
+        name: "{{ wordpress_db_name }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create WordPress database user
+      mysql_user:
+        name: "{{ wordpress_db_user }}"
+        password: "{{ wordpress_db_password }}"
+        priv: "{{ wordpress_db_name }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Download and extract WordPress
+      get_url:
+        url: "https://wordpress.org/latest.tar.gz"
+        dest: "/tmp/wordpress.tar.gz"
+      delegate_to: localhost
+
+    - name: Extract WordPress archive
+      ansible.builtin.archive:
+        src: "/tmp/wordpress.tar.gz"
+        dest: "/var/www/html"
+        remote_src: yes
+      notify:
+        - Set WordPress ownership
+
+    - name: Configure WordPress
+      template:
+        src: "wp-config.php.j2"
+        dest: "/var/www/html/wp-config.php"
+      notify:
+        - Restart Apache
+
+  handlers:
+    - name: Set WordPress ownership
+      file:
+        path: "/var/www/html"
+        owner: apache
+        group: apache
+        recurse: yes
+
+    - name: Restart Apache
+      service:
+        name: httpd
+        state: restarted
